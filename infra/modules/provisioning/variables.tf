@@ -1,0 +1,9 @@
+variable "project_name" {}
+variable "aws_region" {}
+variable "provisioning_hook_lambda_arn" {}
+variable "switch_policy_arn" {}
+variable "sensor_policy_arn" {}
+variable "switch_thing_type" {}
+variable "sensor_thing_type" {}
+variable "switches_group_name" {}
+variable "sensors_group_name" {}

@@ -1,0 +1,16 @@
+variable "project_name" {}
+variable "aws_region" {}
+variable "sns_topic_arn" {}
+variable "dynamodb_devices_table_arn" {}
+variable "dynamodb_devices_table_name" {}
+variable "dynamodb_claims_table_arn" {}
+variable "dynamodb_claims_table_name" {}
+variable "dynamodb_scenes_table_arn" {}
+variable "dynamodb_scenes_table_name" {}
+variable "dynamodb_ota_jobs_table_arn" {}
+variable "dynamodb_ota_jobs_table_name" {}
+variable "firmware_bucket_arn" {}
+variable "firmware_bucket_name" {}
+variable "timestream_database_name" {}
+variable "timestream_table_name" {}
+variable "cognito_user_pool_arn" {}

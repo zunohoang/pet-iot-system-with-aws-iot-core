@@ -22,12 +22,6 @@ resource "aws_iam_role_policy" "iot_rules" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid      = "TimestreamWrite"
-        Effect   = "Allow"
-        Action   = ["timestream:WriteRecords", "timestream:DescribeEndpoints"]
-        Resource = "*"
-      },
-      {
         Sid      = "InvokeLambda"
         Effect   = "Allow"
         Action   = "lambda:InvokeFunction"
@@ -60,7 +54,7 @@ resource "aws_iot_policy" "switch_device" {
         Sid      = "Connect"
         Effect   = "Allow"
         Action   = "iot:Connect"
-        Resource = "arn:aws:iot:${var.aws_region}:*:client/${var.project_name}-switch-*"
+        Resource = "arn:aws:iot:${var.aws_region}:*:client/switch-*"
       },
       {
         Sid    = "Publish"
@@ -102,7 +96,7 @@ resource "aws_iot_policy" "sensor_device" {
         Sid      = "Connect"
         Effect   = "Allow"
         Action   = "iot:Connect"
-        Resource = "arn:aws:iot:${var.aws_region}:*:client/${var.project_name}-sensor-*"
+        Resource = "arn:aws:iot:${var.aws_region}:*:client/sensor-*"
       },
       {
         Sid    = "Publish"
@@ -165,33 +159,6 @@ resource "aws_iot_thing_group" "sensors" {
 
   properties {
     description = "All DHT11 sensor devices"
-  }
-}
-
-# ── Topic Rule: Telemetry → Timestream (direct, low latency) ─────────────────
-resource "aws_iot_topic_rule" "store_telemetry" {
-  name        = "${replace(var.project_name, "-", "_")}_store_telemetry"
-  description = "Write DHT11 telemetry directly to Timestream"
-  enabled     = true
-  sql         = "SELECT temperature, humidity, topic(2) as deviceId FROM 'devices/+/telemetry'"
-  sql_version = "2016-03-23"
-
-  timestream {
-    database_name = var.timestream_database_name
-    table_name    = var.timestream_table_name
-    role_arn      = aws_iam_role.iot_rules.arn
-
-    dimension {
-      name  = "deviceId"
-      value = "$${deviceId}"
-    }
-  }
-
-  error_action {
-    cloudwatch_logs {
-      log_group_name = "/iot/${var.project_name}/rule-errors"
-      role_arn       = aws_iam_role.iot_rules.arn
-    }
   }
 }
 

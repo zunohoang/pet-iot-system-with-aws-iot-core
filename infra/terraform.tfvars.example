@@ -1,0 +1,13 @@
+# Copy: cp terraform.tfvars.example terraform.tfvars
+# terraform.tfvars is gitignored — NEVER commit it.
+# After apply:   terraform output api_gateway_url
+#                 terraform output iot_data_endpoint
+#                 terraform output cognito_*
+
+aws_region   = "ap-southeast-1"
+project_name = "iot-smarthome"
+alert_email  = "your@email.com"
+
+# InfluxDB (Timestream for InfluxDB) admin password: check provider constraints;
+# if apply fails on invalid characters, use [a-zA-Z0-9]+ only.
+influxdb_admin_password = "CHANGE_ME_Alphanumeric0nly"

@@ -1,0 +1,1 @@
+{"state":{"desired":{"relay":"ON"},"reported":{"relay":"ON","firmwareVersion":"1.0.0","deviceType":"switch"}},"metadata":{"desired":{"relay":{"timestamp":1777026036}},"reported":{"relay":{"timestamp":1777025853},"firmwareVersion":{"timestamp":1777025853},"deviceType":{"timestamp":1777025853}}},"version":87,"timestamp":1777026064}

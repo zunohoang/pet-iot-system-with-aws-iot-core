@@ -31,7 +31,8 @@ resource "aws_iam_role_policy" "lambda_permissions" {
         Effect = "Allow"
         Action = [
           "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem",
-          "dynamodb:DeleteItem", "dynamodb:Query", "dynamodb:Scan"
+          "dynamodb:DeleteItem", "dynamodb:Query", "dynamodb:Scan",
+          "dynamodb:BatchGetItem"
         ]
         Resource = [
           var.dynamodb_devices_table_arn,
@@ -41,7 +42,9 @@ resource "aws_iam_role_policy" "lambda_permissions" {
           var.dynamodb_scenes_table_arn,
           "${var.dynamodb_scenes_table_arn}/index/*",
           var.dynamodb_ota_jobs_table_arn,
-          "${var.dynamodb_ota_jobs_table_arn}/index/*"
+          "${var.dynamodb_ota_jobs_table_arn}/index/*",
+          var.dynamodb_user_device_table_arn,
+          "${var.dynamodb_user_device_table_arn}/index/*"
         ]
       },
       {
@@ -70,9 +73,24 @@ resource "aws_iam_role_policy" "lambda_permissions" {
         ]
       },
       {
-        Sid      = "Timestream"
+        Sid    = "InfluxDBSecret"
+        Effect = "Allow"
+        Action = "secretsmanager:GetSecretValue"
+        Resource = var.influxdb_secret_arn
+      },
+      {
+        Sid      = "IoTProvisioningClaim"
         Effect   = "Allow"
-        Action   = ["timestream:WriteRecords", "timestream:DescribeEndpoints", "timestream:Select"]
+        Action   = "iot:CreateProvisioningClaim"
+        Resource = [
+          "arn:aws:iot:${var.aws_region}:${var.aws_account_id}:provisioningtemplate/${var.project_name}-SwitchTemplate",
+          "arn:aws:iot:${var.aws_region}:${var.aws_account_id}:provisioningtemplate/${var.project_name}-SensorTemplate"
+        ]
+      },
+      {
+        Sid      = "IoTDescribeEndpoint"
+        Effect   = "Allow"
+        Action   = "iot:DescribeEndpoint"
         Resource = "*"
       }
     ]
@@ -115,14 +133,18 @@ locals {
   common_env = {
     PROJECT_NAME             = var.project_name
     AWS_REGION_NAME          = var.aws_region
+    IOT_DATA_ENDPOINT        = var.iot_data_endpoint
     DYNAMODB_DEVICES_TABLE   = var.dynamodb_devices_table_name
     DYNAMODB_CLAIMS_TABLE    = var.dynamodb_claims_table_name
     DYNAMODB_SCENES_TABLE    = var.dynamodb_scenes_table_name
     DYNAMODB_OTA_JOBS_TABLE  = var.dynamodb_ota_jobs_table_name
-    FIRMWARE_BUCKET          = var.firmware_bucket_name
-    SNS_ALERT_TOPIC_ARN      = var.sns_topic_arn
-    TIMESTREAM_DATABASE      = var.timestream_database_name
-    TIMESTREAM_TABLE         = var.timestream_table_name
+    USER_DEVICE_TABLE        = var.dynamodb_user_device_table_name
+    FIRMWARE_BUCKET      = var.firmware_bucket_name
+    SNS_ALERT_TOPIC_ARN  = var.sns_topic_arn
+    INFLUXDB_URL         = var.influxdb_url
+    INFLUXDB_ORG         = var.influxdb_org
+    INFLUXDB_BUCKET      = var.influxdb_bucket
+    INFLUXDB_SECRET_ARN  = var.influxdb_secret_arn
   }
 }
 

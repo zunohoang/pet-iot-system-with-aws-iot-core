@@ -13,7 +13,7 @@ DEVICE LAYER
 AWS IoT CORE
 ├── MQTT Broker (TLS 8883 / WebSocket 443)
 ├── Device Shadow Service
-├── Fleet Provisioning (Claim Certificates)
+├── Fleet Provisioning (Trusted User — short-lived claim cert from API)
 ├── Rules Engine  → Timestream, Lambda, DynamoDB
 └── IoT Jobs (OTA)
 
@@ -31,8 +31,18 @@ DATA
 AUTH
 └── Cognito User Pool + Identity Pool (IoT WebSocket SigV4)
 
-MOBILE APP → mobile-app/  (React Native Expo)
+MOBILE APP → mobile/  (React Native Expo)
 ```
+
+**Environment (examples only in git; real secrets in gitignored `terraform.tfvars` / `.env`):**
+
+| Path | Purpose |
+|------|---------|
+| [`.env.example`](.env.example) | Monorepo pointer |
+| [`infra/terraform.tfvars.example`](infra/terraform.tfvars.example) | `terraform apply` |
+| [`mobile/.env.example`](mobile/.env.example) | Expo (`cp` → `.env`) |
+| [`backend/.env.example`](backend/.env.example) | Local Lambda / tests |
+| [`device/switch/.env.example`](device/switch/.env.example), [`device/sensor/...`](device/sensor/.env.example) | Checklist → `config.h` |
 
 ## Project Structure
 
@@ -48,7 +58,7 @@ p_iows/
 │       ├── scene-engine/         Automation engine
 │       ├── ota-manager/          OTA job creator
 │       └── provisioning-hook/    Fleet provisioning validator
-├── mobile-app/          React Native Expo app
+├── mobile/              React Native Expo app
 │   └── src/
 │       ├── screens/     Dashboard, DeviceControl, Monitoring, Scenes
 │       ├── services/    auth.js, api.js, mqtt.js
@@ -57,7 +67,7 @@ p_iows/
     └── modules/
         ├── auth/        Cognito User Pool + Identity Pool
         ├── iot/         IoT Policies + Rules Engine
-        ├── provisioning/ Fleet Provisioning + Claim Certs
+        ├── provisioning/ Fleet Provisioning templates + pre-provision hook
         ├── processing/  Lambda + API Gateway
         ├── data/        DynamoDB + Timestream
         ├── notification/ SNS
@@ -80,20 +90,25 @@ terraform output api_gateway_url
 terraform output cognito_user_pool_id
 terraform output cognito_client_id
 terraform output cognito_identity_pool_id
-
-# Save claim credentials for device flashing (sensitive)
-terraform output -raw claim_certificate_pem > ../device/certs/claim_cert.pem
-terraform output -raw claim_private_key      > ../device/certs/claim_private_key.pem
-curl -o ../device/certs/root_ca.pem \
-  https://www.amazontrust.com/repository/AmazonRootCA1.pem
+terraform output iot_data_endpoint
 ```
+
+Download the public Amazon Root CA into each firmware `main/` component (required for TLS to IoT Core):
+
+```bash
+curl -o device/switch/main/root_ca.pem \
+  https://www.amazontrust.com/repository/AmazonRootCA1.pem
+cp device/switch/main/root_ca.pem device/sensor/main/root_ca.pem
+```
+
+Factory **claim** PEM/key are **not** produced by Terraform anymore. The app calls `POST /devices/provisioning-claim` (backend uses `iot:CreateProvisioningClaim`) and the device stores the short-lived cert in NVS before running `provisioning_run()`.
 
 ### 2. Flash Device Firmware
 
 **Light Switch (ESP32-A):**
 ```bash
 cd device/switch
-# Edit src/config.h: WIFI_SSID, WIFI_PASSWORD, AWS_IOT_ENDPOINT
+# Edit src/config.h: WIFI_SSID, WIFI_PASSWORD, AWS_IOT_ENDPOINT (fallback if iot_host not in NVS)
 idf.py set-target esp32
 idf.py build flash monitor
 ```
@@ -101,42 +116,36 @@ idf.py build flash monitor
 **DHT11 Sensor (ESP32-B):**
 ```bash
 cd device/sensor
-# Edit src/config.h: WIFI_SSID, WIFI_PASSWORD, AWS_IOT_ENDPOINT
+# Edit src/config.h: same as switch
 idf.py set-target esp32
 idf.py build flash monitor
 ```
 
-On first boot each device runs Fleet Provisioning automatically using the pre-flashed claim cert.
+**Trusted User provisioning (summary):** Admin pre-registers the serial (`POST /admin/claims`). The user links the device in the app (`POST /devices/claim`), then requests a provisioning bundle (`POST /devices/provisioning-claim`). While the cert is valid (~5 minutes), transfer WiFi + cert + private key + `iotDataEndpoint` to the firmware (BLE or your transport) and call `provisioning_set_trusted_user_credentials()` before the first `provisioning_run()`. After success, permanent device certs live in NVS.
 
-### 3. Configure Mobile App
-
-Edit `mobile-app/app.json` `extra` section with Terraform outputs:
-```json
-{
-  "AWS_REGION":               "ap-southeast-1",
-  "COGNITO_USER_POOL_ID":     "<cognito_user_pool_id>",
-  "COGNITO_CLIENT_ID":        "<cognito_client_id>",
-  "COGNITO_IDENTITY_POOL_ID": "<cognito_identity_pool_id>",
-  "API_BASE_URL":             "<api_gateway_url>",
-  "IOT_ENDPOINT":             "<IoT endpoint from AWS Console>"
-}
-```
+### 3. Configure mobile app (env)
 
 ```bash
-cd mobile-app
+cd mobile
+cp .env.example .env
+# Fill EXPO_PUBLIC_* from terraform output (including iot_data_endpoint)
 npm install
 npx expo start
 ```
 
-### 4. Pre-register a Device Claim Token
+`mobile/app.config.js` merges `extra` with `.env` (`EXPO_PUBLIC_*`). Mobile realtime MQTT uses SigV4-signed `wss://<iot_data_endpoint>/mqtt` on port 443.
 
-Before shipping a device, register its serial number:
+### 4. Pre-register a device (admin)
+
+Before shipping, register the serial and device type:
 ```bash
-curl -X POST <API_URL>/devices/claim \
+curl -X POST <API_URL>/admin/claims \
   -H "Authorization: <Cognito ID Token>" \
   -H "Content-Type: application/json" \
   -d '{"serialNumber":"AABBCCDDEEFF","deviceType":"switch"}'
 ```
+
+End users link the device in the app (or `POST /devices/claim`), then use **Add device** in the app to obtain a short-lived provisioning bundle.
 
 ### 5. Deploy OTA Update
 
@@ -157,10 +166,28 @@ curl -X POST <API_URL>/ota/deploy \
 |---|---|---|
 | `devices/{id}/telemetry` | Sensor | Temperature + humidity data |
 | `devices/{id}/status` | Any device | Online state + relay status |
-| `devices/{id}/control` | App | Direct relay command |
-| `$aws/things/{id}/shadow/update` | App / Device | Desired/reported state |
+| `$aws/things/{id}/shadow/get` | Mobile (WSS) | Request current shadow snapshot |
+| `$aws/things/{id}/shadow/get/accepted|rejected` | IoT Core | Shadow get response |
+| `$aws/things/{id}/shadow/update` | Device / Backend | Desired/reported state update |
+| `$aws/things/{id}/shadow/update/accepted|rejected` | IoT Core | Shadow update response |
 | `$aws/things/{id}/shadow/update/delta` | IoT Core | State diff notification |
 | `$aws/things/{id}/jobs/notify` | IoT Core | OTA job notification |
+
+Mobile control path stays: `mobile -> API Gateway -> POST /devices/{id}/shadow -> backend UpdateThingShadow`.
+
+## Mobile Realtime Standard (WSS)
+
+- Mobile must use MQTT over WebSocket (`wss`) with Cognito Identity Pool temporary credentials and SigV4 URL signing.
+- Device firmware remains `mqtts` + X.509 on port `8883`; this is independent from the mobile transport.
+- Cognito authenticated IAM policy should stay scoped to required IoT `client`, `topicfilter`, and `topic` ARNs for app realtime topics.
+
+## Realtime Validation Checklist
+
+- Login succeeds and mobile establishes `wss` connection to IoT Data endpoint.
+- Dashboard receives `devices/+/status` updates in realtime.
+- Monitoring receives `devices/{id}/telemetry` updates in realtime.
+- Shadow hook receives both accepted/rejected topics and no longer misses initial `shadow/get` response.
+- Device control via REST (`POST /devices/{id}/shadow`) still works end-to-end.
 
 ## Smart Scene Example
 

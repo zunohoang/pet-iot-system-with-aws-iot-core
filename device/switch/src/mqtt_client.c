@@ -1,10 +1,9 @@
-#include "mqtt_client.h"
+#include "iot_mqtt_client.h"
 #include "shadow_handler.h"
 #include "relay_control.h"
-#include "ota_handler.h"
 #include "config.h"
 #include "esp_log.h"
-#include "esp_mqtt_client.h"
+#include <mqtt_client.h>
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "cJSON.h"
@@ -22,7 +21,6 @@ static char s_thing_name[64];
 static char s_status_topic[128];
 static char s_control_topic[128];
 static char s_shadow_delta_topic[128];
-static char s_jobs_notify_topic[128];
 
 static void load_cert_from_nvs(char *cert_pem, size_t cert_len,
                                 char *priv_key, size_t key_len) {
@@ -38,10 +36,13 @@ static void on_connected(esp_mqtt_client_handle_t client) {
 
     esp_mqtt_client_subscribe(client, s_shadow_delta_topic, 1);
     esp_mqtt_client_subscribe(client, s_control_topic, 1);
-    esp_mqtt_client_subscribe(client, s_jobs_notify_topic, 1);
 
     shadow_handler_init(client, s_thing_name);
-    shadow_request_get();
+    
+    /* Report actual boot state to AWS IoT Shadow.
+       If the cloud desired state differs from this, it will immediately
+       send back a shadow/update/delta to sync the device. */
+    shadow_report_state(relay_get_state());
     mqtt_publish_status(relay_get_state());
 }
 
@@ -70,9 +71,6 @@ static void on_data(esp_mqtt_client_handle_t client,
             cJSON_Delete(root);
         }
 
-    } else if (strstr(t, "jobs/notify")) {
-        /* OTA job notification */
-        ota_handle_job_notification(data, data_len);
     }
 }
 
@@ -108,16 +106,15 @@ void mqtt_app_start(const char *thing_name) {
              TOPIC_CONTROL_FMT, thing_name);
     snprintf(s_shadow_delta_topic, sizeof(s_shadow_delta_topic),
              SHADOW_DELTA_FMT, thing_name);
-    snprintf(s_jobs_notify_topic,  sizeof(s_jobs_notify_topic),
-             "$aws/things/%s/jobs/notify", thing_name);
 
     static char cert_pem[4096];
     static char priv_key[2048];
     load_cert_from_nvs(cert_pem, sizeof(cert_pem),
                        priv_key, sizeof(priv_key));
 
+    /* Keep MQTT clientId aligned with IoT policy/thing identity. */
     char client_id[80];
-    snprintf(client_id, sizeof(client_id), "%s-%s", DEVICE_TYPE, thing_name);
+    snprintf(client_id, sizeof(client_id), "%s", thing_name);
 
     esp_mqtt_client_config_t mqtt_cfg = {
         .broker = {
@@ -126,7 +123,7 @@ void mqtt_app_start(const char *thing_name) {
             .verification.certificate = (const char *)root_ca_pem_start,
         },
         .credentials = {
-            .id = client_id,
+            .client_id = client_id,
             .authentication = {
                 .certificate = cert_pem,
                 .key         = priv_key,

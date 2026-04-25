@@ -40,29 +40,22 @@ resource "aws_iot_provisioning_template" "switch" {
 
   template_body = jsonencode({
     Parameters = {
-      SerialNumber = { Type = "String" }
+      ClaimId      = { Type = "String" }
       DeviceType   = { Type = "String" }
       Location     = { Type = "String", Default = "unknown" }
-      AWS = {
-        Type = "String"
-        Default = {
-          ThingName = {
-            "Fn::Join" = ["", ["switch-", { Ref = "SerialNumber" }]]
-          }
-        }
-      }
+      FirmwareVersion = { Type = "String", Default = "1.0.0" }
     }
     Resources = {
       thing = {
         Type = "AWS::IoT::Thing"
         Properties = {
-          ThingName = { "Fn::Join" = ["", ["switch-", { Ref = "SerialNumber" }]] }
+          ThingName = { "Fn::Join" = ["", ["switch-", { Ref = "ClaimId" }]] }
           ThingTypeName = var.switch_thing_type
           AttributePayload = {
             deviceType      = { Ref = "DeviceType" }
-            serialNumber    = { Ref = "SerialNumber" }
+            claimId         = { Ref = "ClaimId" }
             location        = { Ref = "Location" }
-            firmwareVersion = "1.0.0"
+            firmwareVersion = { Ref = "FirmwareVersion" }
           }
           ThingGroups = [var.switches_group_name]
         }
@@ -102,21 +95,22 @@ resource "aws_iot_provisioning_template" "sensor" {
 
   template_body = jsonencode({
     Parameters = {
-      SerialNumber = { Type = "String" }
+      ClaimId      = { Type = "String" }
       DeviceType   = { Type = "String" }
       Location     = { Type = "String", Default = "unknown" }
+      FirmwareVersion = { Type = "String", Default = "1.0.0" }
     }
     Resources = {
       thing = {
         Type = "AWS::IoT::Thing"
         Properties = {
-          ThingName = { "Fn::Join" = ["", ["sensor-", { Ref = "SerialNumber" }]] }
+          ThingName = { "Fn::Join" = ["", ["sensor-", { Ref = "ClaimId" }]] }
           ThingTypeName = var.sensor_thing_type
           AttributePayload = {
             deviceType      = { Ref = "DeviceType" }
-            serialNumber    = { Ref = "SerialNumber" }
+            claimId         = { Ref = "ClaimId" }
             location        = { Ref = "Location" }
-            firmwareVersion = "1.0.0"
+            firmwareVersion = { Ref = "FirmwareVersion" }
           }
           ThingGroups = [var.sensors_group_name]
         }

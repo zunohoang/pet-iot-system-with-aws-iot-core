@@ -5,7 +5,7 @@
 #define WIFI_PASSWORD    "YOUR_WIFI_PASSWORD"
 
 /* ── AWS IoT Core endpoint ───────────────────────────────────────────── */
-#define AWS_IOT_ENDPOINT "YOUR_ENDPOINT.iot.ap-southeast-1.amazonaws.com"
+#define AWS_IOT_ENDPOINT "xxxx.iot.ap-southeast-1.amazonaws.com"
 #define AWS_IOT_PORT     8883
 
 /* ── Device identity ────────────────────────────────────────────────── */
@@ -13,7 +13,7 @@
 #define FIRMWARE_VERSION "1.0.0"
 
 /* ── GPIO ────────────────────────────────────────────────────────────── */
-#define RELAY_GPIO       GPIO_NUM_26
+/* Onboard LED control mode: no external relay required. */
 #define STATUS_LED_GPIO  GPIO_NUM_2
 
 /* ── MQTT topics (populated at runtime with thingName) ──────────────── */
@@ -36,6 +36,13 @@
 #define NVS_KEY_PROVISIONED  "provisioned"
 #define NVS_KEY_CERT_PEM     "cert_pem"
 #define NVS_KEY_PRIVATE_KEY  "priv_key"
+/* Ephemeral claim from app (CreateProvisioningClaim / Trusted User), erased after provision */
+#define NVS_KEY_CLAIM_CERT   "claim_cert"
+#define NVS_KEY_CLAIM_KEY    "claim_key"
+#define NVS_KEY_IOT_HOST     "iot_host"
+#define NVS_KEY_CLAIM_ID     "claim_id"
+#define NVS_KEY_WIFI_SSID    "wifi_ssid"
+#define NVS_KEY_WIFI_PASS    "wifi_pass"
 
 /* ── Timings ─────────────────────────────────────────────────────────── */
 #define STATUS_PUBLISH_INTERVAL_MS  30000

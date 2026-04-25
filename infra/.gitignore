@@ -1,0 +1,43 @@
+# =========================
+# Terraform
+# =========================
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraform.lock.hcl
+
+# =========================
+# Variables & secrets
+# =========================
+*.tfvars
+*.tfvars.json
+
+# =========================
+# Environment
+# =========================
+.env
+.env.*
+
+# =========================
+# AWS
+# =========================
+*.pem
+*.key
+
+# =========================
+# OS / Editor
+# =========================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# =========================
+# Logs
+# =========================
+*.log

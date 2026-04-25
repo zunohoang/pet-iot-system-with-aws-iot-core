@@ -18,16 +18,9 @@ output "cognito_identity_pool_id" {
   value       = module.auth.identity_pool_id
 }
 
-output "claim_certificate_pem" {
-  description = "Claim certificate PEM — flash to device at factory"
-  value       = module.provisioning.claim_certificate_pem
-  sensitive   = true
-}
-
-output "claim_private_key" {
-  description = "Claim private key — flash to device at factory"
-  value       = module.provisioning.claim_private_key
-  sensitive   = true
+output "iot_data_endpoint" {
+  description = "IoT Core data-ATS host (for MQTT and Trusted User app responses)"
+  value       = data.aws_iot_endpoint.iot_data.endpoint_address
 }
 
 output "switch_provisioning_template" {
@@ -40,4 +33,14 @@ output "sensor_provisioning_template" {
 
 output "firmware_bucket" {
   value = module.ota.firmware_bucket_name
+}
+
+output "influxdb_endpoint" {
+  description = "InfluxDB HTTPS endpoint (port 8086)"
+  value       = module.data.influxdb_endpoint
+}
+
+output "influxdb_secret_arn" {
+  description = "Secrets Manager ARN — contains InfluxDB admin token + credentials"
+  value       = module.data.influxdb_secret_arn
 }

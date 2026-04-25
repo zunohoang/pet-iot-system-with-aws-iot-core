@@ -1,7 +1,8 @@
 #include "config.h"
 #include "provisioning.h"
+#include "ble_provisioning.h"
 #include "relay_control.h"
-#include "mqtt_client.h"
+#include "iot_mqtt_client.h"
 #include "esp_log.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
@@ -20,6 +21,7 @@ static const char *TAG = "main";
 
 static EventGroupHandle_t s_wifi_events;
 static int s_wifi_retry = 0;
+static bool s_wifi_started = false;
 
 /* ── WiFi event handler ──────────────────────────────────────────────── */
 static void wifi_event_handler(void *arg, esp_event_base_t base,
@@ -43,6 +45,10 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
 }
 
 static void wifi_init(void) {
+    if (s_wifi_started) {
+        ESP_LOGI(TAG, "WiFi already initialized");
+        return;
+    }
     s_wifi_events = xEventGroupCreate();
 
     ESP_ERROR_CHECK(esp_netif_init());
@@ -58,26 +64,47 @@ static void wifi_init(void) {
     ESP_ERROR_CHECK(esp_event_handler_instance_register(
         IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL, &h2));
 
-    wifi_config_t wifi_cfg = {
-        .sta = {
-            .ssid     = WIFI_SSID,
-            .password = WIFI_PASSWORD,
-            .threshold.authmode = WIFI_AUTH_WPA2_PSK,
-        },
-    };
+    char wifi_ssid[33] = {0};
+    char wifi_pass[65] = {0};
+    bool has_wifi = provisioning_get_wifi_credentials(
+        wifi_ssid, sizeof(wifi_ssid), wifi_pass, sizeof(wifi_pass));
+    if (!has_wifi) {
+        strncpy(wifi_ssid, WIFI_SSID, sizeof(wifi_ssid) - 1);
+        strncpy(wifi_pass, WIFI_PASSWORD, sizeof(wifi_pass) - 1);
+        ESP_LOGW(TAG, "WiFi credentials not found in NVS, fallback to config.h");
+    } else {
+        ESP_LOGI(TAG, "Loaded WiFi credentials from NVS (SSID length=%u)", (unsigned)strlen(wifi_ssid));
+    }
+
+    wifi_config_t wifi_cfg = {0};
+    strncpy((char *)wifi_cfg.sta.ssid, wifi_ssid, sizeof(wifi_cfg.sta.ssid) - 1);
+    strncpy((char *)wifi_cfg.sta.password, wifi_pass, sizeof(wifi_cfg.sta.password) - 1);
+    wifi_cfg.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg));
     ESP_ERROR_CHECK(esp_wifi_start());
+    s_wifi_started = true;
 
     EventBits_t bits = xEventGroupWaitBits(s_wifi_events,
                                            WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
                                            pdFALSE, pdFALSE,
                                            pdMS_TO_TICKS(30000));
     if (bits & WIFI_CONNECTED_BIT) {
-        ESP_LOGI(TAG, "Connected to WiFi: %s", WIFI_SSID);
+        ESP_LOGI(TAG, "Connected to WiFi");
     } else {
         ESP_LOGE(TAG, "Failed to connect to WiFi");
     }
+}
+
+static void wifi_stop(void) {
+    if (!s_wifi_started) return;
+    esp_err_t err = esp_wifi_stop();
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "esp_wifi_stop returned: %s", esp_err_to_name(err));
+    } else {
+        ESP_LOGI(TAG, "WiFi stopped to save power");
+    }
+    s_wifi_started = false;
 }
 
 /* ── Periodic status publisher ───────────────────────────────────────── */
@@ -100,18 +127,39 @@ void app_main(void) {
     }
 
     relay_init();
-    wifi_init();
 
     /* Fleet Provisioning: run only on first boot */
     if (!provisioning_is_done()) {
+        if (!provisioning_has_claim_credentials()) {
+            ESP_LOGW(TAG, "No claim credentials yet. Starting BLE provisioning server and waiting for app setup payload...");
+            if (!ble_provisioning_start()) {
+                ESP_LOGE(TAG, "Failed to start BLE provisioning server");
+                for (;;) vTaskDelay(pdMS_TO_TICKS(2000));
+            }
+            while (!provisioning_has_claim_credentials()) {
+                ESP_LOGI(TAG, "Waiting for BLE provisioning payload (WiFi + cert + key + claimId)...");
+                vTaskDelay(pdMS_TO_TICKS(5000));
+            }
+            ESP_LOGI(TAG, "Received claim credentials from BLE payload");
+            esp_restart();
+        }
+
+        ESP_LOGI(TAG, "Claim credentials available. Enabling WiFi for Fleet Provisioning...");
+        wifi_init();
         ESP_LOGI(TAG, "First boot — running Fleet Provisioning");
         if (!provisioning_run()) {
-            ESP_LOGE(TAG, "Provisioning failed — halting");
-            for (;;) vTaskDelay(pdMS_TO_TICKS(10000));
+            ESP_LOGE(TAG, "Provisioning failed. Clearing temporary claim and rebooting to BLE wait mode...");
+            provisioning_clear_claim_credentials();
+            wifi_stop();
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            esp_restart();
         }
         ESP_LOGI(TAG, "Provisioning complete — restarting");
         esp_restart();
     }
+
+    ESP_LOGI(TAG, "Device already provisioned. Enabling WiFi + MQTT runtime...");
+    wifi_init();
 
     /* Load permanent thing name and start MQTT */
     char thing_name[64] = {0};

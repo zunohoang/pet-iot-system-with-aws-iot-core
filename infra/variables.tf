@@ -9,5 +9,11 @@ variable "project_name" {
 variable "alert_email" {
   description = "Email address to receive IoT alerts via SNS"
   type        = string
-  default     = ""
+  default     = "nguyenvanhoang2005nt@gmail.com"
+}
+
+variable "influxdb_admin_password" {
+  description = "Admin password for Timestream for InfluxDB. Set in terraform.tfvars (never commit)."
+  type        = string
+  sensitive   = true
 }

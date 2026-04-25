@@ -26,9 +26,20 @@ resource "aws_cognito_user_pool_client" "mobile" {
   user_pool_id = aws_cognito_user_pool.main.id
 
   explicit_auth_flows = [
+    "ALLOW_USER_PASSWORD_AUTH",
     "ALLOW_USER_SRP_AUTH",
     "ALLOW_REFRESH_TOKEN_AUTH"
   ]
+
+  access_token_validity  = 1
+  id_token_validity      = 1
+  refresh_token_validity = 30
+
+  token_validity_units {
+    access_token  = "hours"
+    id_token      = "hours"
+    refresh_token = "days"
+  }
 
   prevent_user_existence_errors = "ENABLED"
 }
@@ -76,23 +87,58 @@ resource "aws_iam_role_policy" "cognito_authenticated" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "IoTMQTTWebSocket"
+        Sid    = "IoTMQTTWebSocketConnect"
         Effect = "Allow"
-        Action = [
-          "iot:Connect",
-          "iot:Publish",
-          "iot:Subscribe",
-          "iot:Receive",
-          "iot:GetThingShadow",
-          "iot:UpdateThingShadow",
-          "iot:DeleteThingShadow"
+        Action = "iot:Connect"
+        Resource = [
+          "arn:aws:iot:${var.aws_region}:${var.aws_account_id}:client/*"
         ]
-        Resource = "*"
+      },
+      {
+        Sid    = "IoTMQTTWebSocketSubscribe"
+        Effect = "Allow"
+        Action = "iot:Subscribe"
+        Resource = [
+          "arn:aws:iot:${var.aws_region}:${var.aws_account_id}:topicfilter/devices/*/status",
+          "arn:aws:iot:${var.aws_region}:${var.aws_account_id}:topicfilter/devices/*/telemetry",
+          "arn:aws:iot:${var.aws_region}:${var.aws_account_id}:topicfilter/$aws/things/*/shadow/get/accepted",
+          "arn:aws:iot:${var.aws_region}:${var.aws_account_id}:topicfilter/$aws/things/*/shadow/get/rejected",
+          "arn:aws:iot:${var.aws_region}:${var.aws_account_id}:topicfilter/$aws/things/*/shadow/update/accepted",
+          "arn:aws:iot:${var.aws_region}:${var.aws_account_id}:topicfilter/$aws/things/*/shadow/update/rejected"
+        ]
+      },
+      {
+        Sid    = "IoTMQTTWebSocketReceive"
+        Effect = "Allow"
+        Action = "iot:Receive"
+        Resource = [
+          "arn:aws:iot:${var.aws_region}:${var.aws_account_id}:topic/devices/*/status",
+          "arn:aws:iot:${var.aws_region}:${var.aws_account_id}:topic/devices/*/telemetry",
+          "arn:aws:iot:${var.aws_region}:${var.aws_account_id}:topic/$aws/things/*/shadow/get/accepted",
+          "arn:aws:iot:${var.aws_region}:${var.aws_account_id}:topic/$aws/things/*/shadow/get/rejected",
+          "arn:aws:iot:${var.aws_region}:${var.aws_account_id}:topic/$aws/things/*/shadow/update/accepted",
+          "arn:aws:iot:${var.aws_region}:${var.aws_account_id}:topic/$aws/things/*/shadow/update/rejected"
+        ]
+      },
+      {
+        Sid    = "IoTMQTTWebSocketPublish"
+        Effect = "Allow"
+        Action = "iot:Publish"
+        Resource = [
+          "arn:aws:iot:${var.aws_region}:${var.aws_account_id}:topic/$aws/things/*/shadow/*",
+          "arn:aws:iot:${var.aws_region}:${var.aws_account_id}:topic/devices/*"
+        ]
       },
       {
         Sid      = "IoTDescribeEndpoint"
         Effect   = "Allow"
         Action   = "iot:DescribeEndpoint"
+        Resource = "*"
+      },
+      {
+        Sid      = "IoTAttachPrincipalPolicy"
+        Effect   = "Allow"
+        Action   = "iot:AttachPrincipalPolicy"
         Resource = "*"
       }
     ]
@@ -105,4 +151,27 @@ resource "aws_cognito_identity_pool_roles_attachment" "main" {
   roles = {
     "authenticated" = aws_iam_role.cognito_authenticated.arn
   }
+}
+
+# AWS IoT Policy for Mobile Users (Cognito Identities)
+# Because AWS IoT ignores IAM policies for MQTT operations when using Cognito Identities,
+# this IoT policy MUST be attached to the Cognito Identity ID to allow connections.
+resource "aws_iot_policy" "mobile_user" {
+  name = "${var.project_name}-mobile-user-policy"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = [
+          "iot:Connect",
+          "iot:Subscribe",
+          "iot:Publish",
+          "iot:Receive"
+        ]
+        Resource = ["*"]
+      }
+    ]
+  })
 }

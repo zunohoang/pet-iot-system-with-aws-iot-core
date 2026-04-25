@@ -1,0 +1,1 @@
+{"httpMethod":"GET","path":"/devices","requestContext":{"authorizer":{"claims":{"sub":"19ea058c-3051-7030-d30e-469d28ad5052"}}},"queryStringParameters":{}}

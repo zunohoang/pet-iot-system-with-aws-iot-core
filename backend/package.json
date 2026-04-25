@@ -10,7 +10,7 @@
     "@aws-sdk/client-sns": "^3.0.0",
     "@aws-sdk/client-s3": "^3.0.0",
     "@aws-sdk/s3-request-presigner": "^3.0.0",
-    "@aws-sdk/client-timestream-write": "^3.0.0",
-    "@aws-sdk/client-timestream-query": "^3.0.0"
+    "@aws-sdk/client-secrets-manager": "^3.0.0",
+    "@influxdata/influxdb-client": "^1.33.2"
   }
 }

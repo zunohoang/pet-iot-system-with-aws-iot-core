@@ -9,16 +9,25 @@ provider "aws" {
   region = var.aws_region
 }
 
+data "aws_caller_identity" "current" {}
+
+data "aws_iot_endpoint" "iot_data" {
+  endpoint_type = "iot:Data-ATS"
+}
+
 # ── Auth ─────────────────────────────────────────────────────────────────────
 module "auth" {
   source       = "./modules/auth"
   project_name = var.project_name
+  aws_region   = var.aws_region
+  aws_account_id = data.aws_caller_identity.current.account_id
 }
 
 # ── Data (DynamoDB + Timestream) ──────────────────────────────────────────────
 module "data" {
-  source       = "./modules/data"
-  project_name = var.project_name
+  source                  = "./modules/data"
+  project_name            = var.project_name
+  influxdb_admin_password = var.influxdb_admin_password
 }
 
 # ── Notification (SNS) ────────────────────────────────────────────────────────
@@ -47,13 +56,19 @@ module "processing" {
   dynamodb_claims_table_name   = module.data.device_claims_table_name
   dynamodb_scenes_table_arn    = module.data.scenes_table_arn
   dynamodb_scenes_table_name   = module.data.scenes_table_name
-  dynamodb_ota_jobs_table_arn  = module.data.ota_jobs_table_arn
-  dynamodb_ota_jobs_table_name = module.data.ota_jobs_table_name
-  firmware_bucket_arn          = module.ota.firmware_bucket_arn
+  dynamodb_ota_jobs_table_arn      = module.data.ota_jobs_table_arn
+  dynamodb_ota_jobs_table_name     = module.data.ota_jobs_table_name
+  dynamodb_user_device_table_name  = module.data.user_device_table_name
+  dynamodb_user_device_table_arn   = module.data.user_device_table_arn
+  firmware_bucket_arn              = module.ota.firmware_bucket_arn
   firmware_bucket_name         = module.ota.firmware_bucket_name
-  timestream_database_name     = module.data.timestream_database_name
-  timestream_table_name        = module.data.timestream_table_name
+  influxdb_url                 = module.data.influxdb_endpoint
+  influxdb_org                 = module.data.influxdb_org
+  influxdb_bucket              = module.data.influxdb_bucket
+  influxdb_secret_arn          = module.data.influxdb_secret_arn
   cognito_user_pool_arn        = module.auth.user_pool_arn
+  iot_data_endpoint            = data.aws_iot_endpoint.iot_data.endpoint_address
+  aws_account_id               = data.aws_caller_identity.current.account_id
 }
 
 # ── IoT Core (Policies + Rules) ───────────────────────────────────────────────
@@ -62,8 +77,6 @@ module "iot" {
   project_name = var.project_name
   aws_region   = var.aws_region
 
-  timestream_database_name    = module.data.timestream_database_name
-  timestream_table_name       = module.data.timestream_table_name
   iot_processor_lambda_arn    = module.processing.iot_processor_lambda_arn
   scene_engine_lambda_arn     = module.processing.scene_engine_lambda_arn
   dynamodb_devices_table_name = module.data.devices_table_name

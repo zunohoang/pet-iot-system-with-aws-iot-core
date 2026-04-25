@@ -1,0 +1,22 @@
+idf_component_register(
+  SRCS
+    "../src/main.c"
+    "../src/relay_control.c"
+    "../src/mqtt_client.c"
+    "../src/shadow_handler.c"
+    "../src/provisioning.c"
+    "../src/ble_provisioning.c"
+  INCLUDE_DIRS "../src" "."
+  REQUIRES
+    esp_driver_gpio
+    esp_wifi
+    esp_event
+    esp_netif
+    nvs_flash
+    mqtt
+    json
+  PRIV_REQUIRES
+    bt
+  EMBED_TXTFILES
+    "root_ca.pem"
+)
